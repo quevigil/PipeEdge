@@ -1,3 +1,4 @@
+from typing import Optional, Union
 import logging
 import torch
 from torch import nn
@@ -11,9 +12,11 @@ from . import CNNShardData
 logger = logging.getLogger(__name__)
 
 class ResnetConfig:
-    def __init__(self, model=None):
+    def __init__(self, model_name=None):
         self.name_or_path = ''
         self.info = {}
+        torch_models = getattr(models, model_name.split('/')[1])
+        model = torch_models(pretrained=True)
         if model:
             self.name_or_path = model.__class__.__name__
             self.generate_config(model)
@@ -353,6 +356,11 @@ class ResNetModelShard(ModuleShard):
             data = self.fc(data)
         return data
     
+    @staticmethod
+    def save_weights(model_name: str, model_file: str) -> None:
+        torch_models = getattr(models, model_name.split('/')[1])
+        model = torch_models(pretrained=True)
+        torch.save(model.state_dict(), model_file)
 
 
 class ResNet18ModelShard(ResNetModelShard):

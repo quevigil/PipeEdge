@@ -71,9 +71,9 @@ def get_model_config(model_name: str, model_file) -> Any:
     # We'll need more complexity if/when we add support for models not from `transformers`
     if model_name.split('/')[0] == 'torchvision':
         if model_name.split('/')[1].startswith('resnet'):
-            config = resnet.ResnetConfig(model_file)
+            config = resnet.ResnetConfig(model_name)
         if model_name.split('/')[1] == 'alexnet':
-            config = alexnet.AlexNetConfig(model_file)
+            config = alexnet.AlexNetConfig(model_name)
     else:
         config = AutoConfig.from_pretrained(model_name)
         # Sonfig overrides
@@ -85,11 +85,7 @@ def get_model_config(model_name: str, model_file) -> Any:
 
 def get_model_default_weights_file(model_name: str) -> str:
     """Get a model's default weights file name."""
-    if model_name.split('/')[0] == 'torchvision':
-        torch_models = getattr(models, model_name.split('/')[1])
-        return torch_models(pretrained=True)
-    else:
-        return _MODEL_CONFIGS[model_name]['weights_file']
+    return _MODEL_CONFIGS[model_name]['weights_file']
 
 def save_model_weights_file(model_name: str, model_file: Optional[str]=None) -> None:
     """Save a model's weights file."""
