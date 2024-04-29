@@ -5,10 +5,7 @@ import time
 import torch
 from typing import List
 from torch.utils.data import DataLoader
-from torchvision.datasets import ImageFolder
-from transformers import DeiTFeatureExtractor, ViTFeatureExtractor
-from runtime import forward_hook_quant_encode, forward_pre_hook_quant_decode
-from utils.data import ViTFeatureExtractorTransforms
+from runtime import forward_hook_quant_encode, forward_pre_hook_quant_decode, load_dataset
 import model_cfg
 from evaluation_tools.evaluation_quant_test import *
 
@@ -66,14 +63,11 @@ def _forward_model(input_tensor, model_shards):
             temp_tensor = (forward_hook_quant_encode(shard, None, temp_tensor),)
     return temp_tensor
 
-def evaluation(args):
+def evaluation(args, dataset_cfg):
     """ Evaluation main func"""
     # localize parameters
-    dataset_path = args.dataset_root
-    dataset_split = args.dataset_split
     batch_size = args.batch_size
     ubatch_size = args.ubatch_size
-    num_workers = args.num_workers
     partition = args.partition
     quant = args.quant
     output_dir = args.output_dir
@@ -85,23 +79,33 @@ def evaluation(args):
     #     model_file = model_cfg.get_model_default_weights_file(model_name)
 
     # load dataset
-    if model_name in ['facebook/deit-base-distilled-patch16-224',
-                        'facebook/deit-small-distilled-patch16-224',
-                        'facebook/deit-tiny-distilled-patch16-224']:
-        feature_extractor = DeiTFeatureExtractor.from_pretrained(model_name)
-    else:
-        feature_extractor = ViTFeatureExtractor.from_pretrained(model_name)
+    dataset = load_dataset(dataset_cfg, model_name, batch_size, ubatch_size)
+    data_loader = DataLoader(dataset, batch_size=ubatch_size)
+    # if model_name in ['facebook/deit-base-distilled-patch16-224',
+    #                     'facebook/deit-small-distilled-patch16-224',
+    #                     'facebook/deit-tiny-distilled-patch16-224']:
+    #     feature_extractor = DeiTFeatureExtractor.from_pretrained(model_name)
+    # elif model_name.startswith('torchvision'):
+    #         feature_extractor = transforms.Compose([
+    #         transforms.Resize(256),
+    #         transforms.CenterCrop(224),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225]),
+    #         transforms.Lambda(lambda x: x.unsqueeze(0))
+    #         ])
+    # else:
+    #     feature_extractor = ViTFeatureExtractor.from_pretrained(model_name)
 
-    val_transform = ViTFeatureExtractorTransforms(feature_extractor)
-    val_dataset = ImageFolder(os.path.join(dataset_path, dataset_split),
-                            transform = val_transform)
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size = batch_size,
-        num_workers = num_workers,
-        shuffle=True,
-        pin_memory=True
-    )
+    # val_transform = ViTFeatureExtractorTransforms(feature_extractor)
+    # val_dataset = ImageFolder(os.path.join(dataset_path, dataset_split),
+    #                         transform = val_transform)
+    # val_loader = DataLoader(
+    #     val_dataset,
+    #     batch_size = batch_size,
+    #     num_workers = num_workers,
+    #     shuffle=True,
+    #     pin_memory=True
+    # )
 
     # model config
     def _get_default_quant(n_stages: int) -> List[int]:
@@ -125,7 +129,7 @@ def evaluation(args):
     start_time = time.time()
     acc_reporter = ReportAccuracy(batch_size, output_dir, model_name, partition, stage_quant[0])
     with torch.no_grad():
-        for batch_idx, (input, target) in enumerate(val_loader):
+        for batch_idx, (input, target) in enumerate(data_loader):
             if batch_idx == num_stop_batch and num_stop_batch:
                 break
             output = _forward_model(input, model_shards)
@@ -155,7 +159,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--device", type=str, default=None,
                         help="compute device type to use, with optional ordinal, "
                              "e.g.: 'cpu', 'cuda', 'cuda:1'")
-    parser.add_argument("-n", "--num-workers", default=16, type=int,
+    parser.add_argument("-n", "--num-workers", default=4, type=int,
                         help="the number of worker threads for the dataloder")
     # Model options
     parser.add_argument("-m", "--model-name", type=str, default="google/vit-base-patch16-224",
@@ -182,4 +186,18 @@ if __name__ == "__main__":
                       help="dataset shuffle")
     args = parser.parse_args()
 
-    evaluation(args)
+    if args.dataset_indices_file is None:
+        indices = None
+    elif args.dataset_indices_file.endswith('.pt'):
+        indices = torch.load(args.dataset_indices_file)
+    else:
+        indices = np.load(args.dataset_indices_file)
+    dataset_cfg = {
+        'name': args.dataset_name,
+        'root': args.dataset_root,
+        'split': args.dataset_split,
+        'indices': indices,
+        'shuffle': args.dataset_shuffle,
+    }
+
+    evaluation(args, dataset_cfg)
