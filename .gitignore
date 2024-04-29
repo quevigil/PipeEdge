@@ -1,3 +1,10 @@
+# model files
+*.pt
+*.pth
+
+# temp results files
+results/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -157,8 +164,3 @@ cython_debug/
 *.csv
 *.npz
 *.yml
-
-# Yiyun ignore
-dataset/
-*.pth
-src/pipeedge/models/cnn/data
